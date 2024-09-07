@@ -1,28 +1,47 @@
-pipeline { 
+pipeline {
     agent any
-    
-    tools {
-        maven 'maven'
+    tools{
+        maven 'maven3'
         jdk 'jdk17'
+    }
+    environment{
+        SONAR_HOME = tool "sonar-scanner"
     }
 
     stages {
-        
-        stage('Compile&Deploy') {
+        stage('Git Clone') {
             steps {
-            sh  "mvn compile"
+                git branch: 'main', url: 'https://github.com/udayyysharmaa/Full-Stack-BloggingProject.git'
             }
         }
-        
-        stage('Test&build') {
+        stage('Code Compile') {
             steps {
-                sh "mvn test"
+                sh 'mvn compile'
             }
         }
-        
-        stage('Package') {
+        stage('Code Test') {
             steps {
-                sh "mvn package"
+                sh 'mvn test'
+            }
+        }
+        stage('Code Package') {
+            steps {
+                sh 'mvn clean package'
+            }
+        }
+
+        stage('Sonar-Analysis') {
+            steps {
+                withSonarQubeEnv('sonar') {
+                    sh '$SONAR_HOME/bin/sonar-scanner -Dsonar.projectName=nexus -Dsonar.projectKey=nexus -Dsonar.java.binaries=target'
+                }
+            }
+        }
+        stage('Deploy and Artifactes') {
+            steps {
+                withMaven(globalMavenSettingsConfig: '', jdk: 'jdk17', maven: 'maven3', mavenSettingsConfig: '1d0db06e-98fd-45a9-8ff5-da57ba3f9ecf', traceability: true) {
+                    sh 'mvn deploy'
+                }
             }
         }
     }
