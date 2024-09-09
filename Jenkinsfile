@@ -1,12 +1,12 @@
 pipeline {
     agent any
     tools{
-        maven 'maven3'
         jdk 'jdk17'
+        maven 'maven'
     }
-    environment{
+    environment {
         SONAR_HOME = tool "sonar-scanner"
-    }
+    } 
 
     stages {
         stage('Git Clone') {
@@ -14,34 +14,50 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/udayyysharmaa/Full-Stack-BloggingProject.git'
             }
         }
-        stage('Code Compile') {
+        stage('Build Package') {
             steps {
-                sh 'mvn compile'
+                sh 'mvn package'
             }
         }
-        stage('Code Test') {
+        stage('Sonarqube-Analysis') {
             steps {
-                sh 'mvn test'
+                withSonarQubeEnv('sonar') {
+                    sh '$SONAR_HOME/bin/sonar-scanner -Dsonar.projectName=Fullstack-projectforclient -Dsonar.projectKey=Fulltack-Projectforclient  -Dsonar.java.binaries=target'
+                }
             }
+            
         }
-        stage('Code Package') {
+        stage('Sonar Quality Check') {
             steps {
-                sh 'mvn clean package'
+                timeout(time: 1, unit: 'HOURS') {
+                    waitForQualityGate abortPipeline: false
+                }
             }
         }
 
-        stage('Sonar-Analysis') {
+        stage('Code Build') {
             steps {
-                withSonarQubeEnv('sonar') {
-                    sh '$SONAR_HOME/bin/sonar-scanner -Dsonar.projectName=nexus -Dsonar.projectKey=nexus -Dsonar.java.binaries=target'
-                }
+                sh 'docker build -t websitehost:v2 .'
             }
         }
-        stage('Deploy and Artifactes') {
+        stage('Trivy') {
             steps {
-                withMaven(globalMavenSettingsConfig: '', jdk: 'jdk17', maven: 'maven3', mavenSettingsConfig: '1d0db06e-98fd-45a9-8ff5-da57ba3f9ecf', traceability: true) {
-                    sh 'mvn deploy'
+                sh 'trivy image websitehost:v2'
+            }
+        }
+        stage("Push to Private Docker Hub Repo"){
+            steps{
+                withCredentials([usernamePassword(credentialsId:"DockerHubCred",passwordVariable:"dockerPass",usernameVariable:"dockerUser")]){
+                sh "docker login -u ${env.dockerUser} -p ${env.dockerPass}"
+                sh "docker tag  websitehost:v2 ${env.dockerUser}/websitehost:v2"
+                sh "docker push ${env.dockerUser}/websitehost:v2"
                 }
+                
+            }
+        }
+        stage('Code Deploy') {
+            steps {
+                sh 'docker run -d --name FullstackProject -p 8080:8080 websitehost:v2 '
             }
         }
     }
